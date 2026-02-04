@@ -1,6 +1,80 @@
 import { Suggestion } from '../types';
 
 export const suggestions: Suggestion[] = [
+  // BABY & PEUTER
+  {
+    id: 'rammelaar',
+    name: 'Houten Rammelaar',
+    imageUrl: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=200',
+    priceRange: '€10-20',
+    targetAgeGroups: ['child'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['baby'],
+  },
+  {
+    id: 'stapelblokken',
+    name: 'Zachte Stapelblokken',
+    imageUrl: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=200',
+    priceRange: '€15-30',
+    targetAgeGroups: ['child'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['baby'],
+  },
+  {
+    id: 'knuffel-baby',
+    name: 'Knuffeldoekje',
+    imageUrl: 'https://images.unsplash.com/photo-1562040506-a9b32cb51b94?w=200',
+    priceRange: '€10-25',
+    targetAgeGroups: ['child'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['baby'],
+  },
+  {
+    id: 'speelmat',
+    name: 'Speelmat met Boog',
+    imageUrl: 'https://images.unsplash.com/photo-1566004100631-35d015d6a491?w=200',
+    priceRange: '€40-80',
+    targetAgeGroups: ['child'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['baby'],
+  },
+  {
+    id: 'babyboekjes',
+    name: 'Knisper Babyboekjes',
+    imageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=200',
+    priceRange: '€10-20',
+    targetAgeGroups: ['child'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['baby', 'reading'],
+  },
+  {
+    id: 'bijtring',
+    name: 'Siliconen Bijtring Set',
+    imageUrl: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=200',
+    priceRange: '€8-15',
+    targetAgeGroups: ['child'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['baby'],
+  },
+  {
+    id: 'loopwagen',
+    name: 'Houten Loopwagen',
+    imageUrl: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=200',
+    priceRange: '€40-80',
+    targetAgeGroups: ['child'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['baby'],
+  },
+  {
+    id: 'muziekmobiel',
+    name: 'Muziekmobiel',
+    imageUrl: 'https://images.unsplash.com/photo-1555252333-9f8e92e65df9?w=200',
+    priceRange: '€25-50',
+    targetAgeGroups: ['child'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['baby', 'music'],
+  },
+
   // KINDEREN (0-12)
   // Speelgoed
   {
@@ -305,6 +379,82 @@ export const suggestions: Suggestion[] = [
     targetAgeGroups: ['teen', 'adult'],
     targetGenders: ['male', 'female', 'other'],
     targetInterests: ['travel'],
+  },
+
+  // HUISDIEREN
+  {
+    id: 'hondenspeelgoed',
+    name: 'Hondenspeelgoed Set',
+    imageUrl: 'https://images.unsplash.com/photo-1535294435445-d7249524ef2e?w=200',
+    priceRange: '€15-35',
+    targetAgeGroups: ['child', 'teen', 'adult'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['pets'],
+  },
+  {
+    id: 'kattenspeelgoed',
+    name: 'Interactief Kattenspeelgoed',
+    imageUrl: 'https://images.unsplash.com/photo-1545249390-6bdfa286032f?w=200',
+    priceRange: '€10-30',
+    targetAgeGroups: ['child', 'teen', 'adult'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['pets'],
+  },
+  {
+    id: 'huisdiermand',
+    name: 'Comfortabele Huisdiermand',
+    imageUrl: 'https://images.unsplash.com/photo-1541781774459-bb2af2f05b55?w=200',
+    priceRange: '€30-80',
+    targetAgeGroups: ['adult'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['pets'],
+  },
+
+  // WONEN
+  {
+    id: 'geurkaarsen',
+    name: 'Luxe Geurkaarsen Set',
+    imageUrl: 'https://images.unsplash.com/photo-1602607434776-83be50e037c5?w=200',
+    priceRange: '€20-50',
+    targetAgeGroups: ['adult'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['home'],
+  },
+  {
+    id: 'plaid',
+    name: 'Zachte Plaid',
+    imageUrl: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=200',
+    priceRange: '€30-70',
+    targetAgeGroups: ['adult'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['home'],
+  },
+  {
+    id: 'fotolijsten',
+    name: 'Fotolijsten Set',
+    imageUrl: 'https://images.unsplash.com/photo-1513519245088-0e12902e35a6?w=200',
+    priceRange: '€20-50',
+    targetAgeGroups: ['adult'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['home'],
+  },
+  {
+    id: 'vaas',
+    name: 'Design Vaas',
+    imageUrl: 'https://images.unsplash.com/photo-1481277542470-605612bd2d61?w=200',
+    priceRange: '€25-75',
+    targetAgeGroups: ['adult'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['home', 'garden'],
+  },
+  {
+    id: 'kussens',
+    name: 'Sierkussens Set',
+    imageUrl: 'https://images.unsplash.com/photo-1579656381254-4a5e2da7b178?w=200',
+    priceRange: '€25-60',
+    targetAgeGroups: ['adult'],
+    targetGenders: ['male', 'female', 'other'],
+    targetInterests: ['home'],
   },
 ];
 

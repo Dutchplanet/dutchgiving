@@ -39,6 +39,7 @@ export interface Suggestion {
 }
 
 export const INTERESTS = [
+  { id: 'baby', label: 'Baby & Peuter', icon: '🍼' },
   { id: 'technology', label: 'Technologie', icon: '💻' },
   { id: 'sports', label: 'Sport', icon: '⚽' },
   { id: 'reading', label: 'Lezen', icon: '📚' },
@@ -51,6 +52,8 @@ export const INTERESTS = [
   { id: 'travel', label: 'Reizen', icon: '✈️' },
   { id: 'beauty', label: 'Beauty', icon: '💄' },
   { id: 'fitness', label: 'Fitness', icon: '💪' },
+  { id: 'pets', label: 'Huisdieren', icon: '🐾' },
+  { id: 'home', label: 'Wonen', icon: '🏠' },
 ] as const;
 
 export const AGE_GROUPS = [
