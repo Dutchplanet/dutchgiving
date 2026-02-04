@@ -1,13 +1,24 @@
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ProfileForm } from '../components/ProfileForm';
-import { savePerson, getPersons } from '../lib/storage';
+import { createPerson, getPersons } from '../lib/firebase';
 import { Twinkles } from '../components/Twinkles';
+import { useEffect } from 'react';
 
 export function CreatePerson() {
   const navigate = useNavigate();
-  const hasPersons = getPersons().length > 0;
+  const [hasPersons, setHasPersons] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (data: {
+  useEffect(() => {
+    async function checkPersons() {
+      const persons = await getPersons();
+      setHasPersons(persons.length > 0);
+    }
+    checkPersons();
+  }, []);
+
+  const handleSubmit = async (data: {
     name: string;
     ageGroup: 'child' | 'teen' | 'adult';
     gender: 'male' | 'female' | 'other';
@@ -16,8 +27,15 @@ export function CreatePerson() {
     budget?: number;
     pin?: string;
   }) => {
-    const person = savePerson(data);
-    navigate(`/list/${person.id}`, { replace: true });
+    setLoading(true);
+    try {
+      const personId = await createPerson(data);
+      navigate(`/list/${personId}`, { replace: true });
+    } catch (error) {
+      console.error('Error creating person:', error);
+      alert('Er ging iets mis bij het aanmaken. Probeer het opnieuw.');
+      setLoading(false);
+    }
   };
 
   return (
@@ -50,7 +68,13 @@ export function CreatePerson() {
       {/* Form */}
       <div className="px-4 -mt-12 pb-8 relative z-10">
         <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-lg p-6">
-          <ProfileForm onSubmit={handleSubmit} submitLabel="Lijst aanmaken" />
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+            </div>
+          ) : (
+            <ProfileForm onSubmit={handleSubmit} submitLabel="Lijst aanmaken" />
+          )}
         </div>
       </div>
     </div>

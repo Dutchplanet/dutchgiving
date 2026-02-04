@@ -15,17 +15,20 @@ import {
   verticalListSortingStrategy,
   arrayMove,
 } from '@dnd-kit/sortable';
-import { Person, WishlistItem as WishlistItemType, Suggestion, AgeGroup, Gender } from '../types';
+import { WishlistItem as WishlistItemType, Suggestion, AgeGroup, Gender } from '../types';
 import {
-  getPersonById,
-  getWishlistItems,
-  saveWishlistItem,
-  updateWishlistItem,
-  deleteWishlistItem,
-  reorderWishlistItems,
-  deletePerson,
-  updatePerson,
-} from '../lib/storage';
+  PersonWithCollaborators,
+  subscribeToPerson,
+  subscribeToWishlistItems,
+  createWishlistItem,
+  updateWishlistItem as updateWishlistItemFb,
+  deleteWishlistItem as deleteWishlistItemFb,
+  deletePerson as deletePersonFb,
+  updatePerson as updatePersonFb,
+  addCollaborator,
+  removeCollaborator,
+  getUserDisplayName,
+} from '../lib/firebase';
 import { getSuggestionsForPerson } from '../data/suggestions';
 import { WishlistItem } from '../components/WishlistItem';
 import { SuggestionCard } from '../components/SuggestionCard';
@@ -34,17 +37,24 @@ import { ShareButton } from '../components/ShareButton';
 import { ProfileForm } from '../components/ProfileForm';
 import { Twinkles } from '../components/Twinkles';
 import { PinLock } from '../components/PinLock';
+import { useAuth } from '../context/AuthContext';
 
 export function Wishlist() {
   const { personId } = useParams<{ personId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
-  const [person, setPerson] = useState<Person | null>(null);
+  const [person, setPerson] = useState<PersonWithCollaborators | null>(null);
   const [items, setItems] = useState<WishlistItemType[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showCollaboratorModal, setShowCollaboratorModal] = useState(false);
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [collaboratorUsername, setCollaboratorUsername] = useState('');
+  const [collaboratorError, setCollaboratorError] = useState('');
+  const [collaboratorNames, setCollaboratorNames] = useState<Record<string, string>>({});
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -57,24 +67,46 @@ export function Wishlist() {
     })
   );
 
+  // Subscribe to person and items
   useEffect(() => {
     if (!personId) {
       navigate('/persons', { replace: true });
       return;
     }
 
-    const loadedPerson = getPersonById(personId);
-    if (!loadedPerson) {
-      navigate('/persons', { replace: true });
-      return;
-    }
+    const unsubscribePerson = subscribeToPerson(personId, (loadedPerson) => {
+      if (!loadedPerson) {
+        navigate('/persons', { replace: true });
+        return;
+      }
+      setPerson(loadedPerson);
+      setIsUnlocked(!loadedPerson.pin);
+      setLoading(false);
+    });
 
-    setPerson(loadedPerson);
-    setItems(getWishlistItems(personId));
+    const unsubscribeItems = subscribeToWishlistItems(personId, (loadedItems) => {
+      setItems(loadedItems);
+    });
 
-    // Check if person has PIN - if not, auto-unlock
-    setIsUnlocked(!loadedPerson.pin);
+    return () => {
+      unsubscribePerson();
+      unsubscribeItems();
+    };
   }, [personId, navigate]);
+
+  // Load collaborator display names
+  useEffect(() => {
+    async function loadCollaboratorNames() {
+      if (!person?.collaborators) return;
+      const names: Record<string, string> = {};
+      for (const username of person.collaborators) {
+        const displayName = await getUserDisplayName(username);
+        names[username] = displayName || username;
+      }
+      setCollaboratorNames(names);
+    }
+    loadCollaboratorNames();
+  }, [person?.collaborators]);
 
   // Calculate totals
   const totalSpent = useMemo(() => {
@@ -96,7 +128,9 @@ export function Wishlist() {
     );
   }, [person, remainingBudget]);
 
-  const handleAddItem = (data: {
+  const isOwner = person?.ownerId === user?.username;
+
+  const handleAddItem = async (data: {
     name: string;
     price?: number;
     url?: string;
@@ -105,68 +139,61 @@ export function Wishlist() {
   }) => {
     if (!personId) return;
 
-    const newItem = saveWishlistItem({
+    await createWishlistItem({
       personId,
       ...data,
       purchased: false,
       order: items.length,
     });
 
-    setItems([...items, newItem]);
     setShowAddForm(false);
   };
 
-  const handleAddSuggestion = (suggestion: Suggestion) => {
+  const handleAddSuggestion = async (suggestion: Suggestion) => {
     if (!personId) return;
 
-    const newItem = saveWishlistItem({
+    await createWishlistItem({
       personId,
       name: suggestion.name,
       imageUrl: suggestion.imageUrl,
       purchased: false,
       order: items.length,
     });
-
-    setItems([...items, newItem]);
   };
 
-  const handleTogglePurchased = (id: string, purchased: boolean) => {
-    updateWishlistItem(id, { purchased });
-    setItems(items.map((item) => (item.id === id ? { ...item, purchased } : item)));
+  const handleTogglePurchased = async (id: string, purchased: boolean) => {
+    await updateWishlistItemFb(id, { purchased });
   };
 
-  const handleDeleteItem = (id: string) => {
-    deleteWishlistItem(id);
-    setItems(items.filter((item) => item.id !== id));
+  const handleDeleteItem = async (id: string) => {
+    await deleteWishlistItemFb(id);
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
       const oldIndex = items.findIndex((item) => item.id === active.id);
       const newIndex = items.findIndex((item) => item.id === over.id);
 
-      const newItems = arrayMove(items, oldIndex, newIndex).map((item, index) => ({
-        ...item,
-        order: index,
-      }));
+      const newItems = arrayMove(items, oldIndex, newIndex);
 
-      setItems(newItems);
-      reorderWishlistItems(
-        personId!,
-        newItems.map((item) => item.id)
-      );
+      // Update order for each item
+      for (let i = 0; i < newItems.length; i++) {
+        if (newItems[i].order !== i) {
+          await updateWishlistItemFb(newItems[i].id, { order: i });
+        }
+      }
     }
   };
 
-  const handleDeletePerson = () => {
+  const handleDeletePerson = async () => {
     if (!personId) return;
-    deletePerson(personId);
+    await deletePersonFb(personId);
     navigate('/persons', { replace: true });
   };
 
-  const handleEditPerson = (data: {
+  const handleEditPerson = async (data: {
     name: string;
     ageGroup: AgeGroup;
     gender: Gender;
@@ -176,14 +203,39 @@ export function Wishlist() {
     pin?: string;
   }) => {
     if (!personId || !person) return;
-    updatePerson(personId, data);
-    setPerson({ ...person, ...data });
+    await updatePersonFb(personId, data);
     setShowEditModal(false);
+  };
+
+  const handleAddCollaborator = async () => {
+    if (!personId || !collaboratorUsername.trim()) return;
+
+    setCollaboratorError('');
+    const result = await addCollaborator(personId, collaboratorUsername);
+
+    if (result.success) {
+      setCollaboratorUsername('');
+    } else {
+      setCollaboratorError(result.error || 'Er ging iets mis');
+    }
+  };
+
+  const handleRemoveCollaborator = async (username: string) => {
+    if (!personId) return;
+    await removeCollaborator(personId, username);
   };
 
   const handleUnlock = () => {
     setIsUnlocked(true);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-cream flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   if (!person) {
     return null;
@@ -222,17 +274,30 @@ export function Wishlist() {
           </svg>
         </Link>
 
-        {/* Edit & Share buttons */}
+        {/* Edit, Collaborators & Share buttons */}
         <div className="absolute top-4 right-4 z-10 flex items-center gap-1">
-          <button
-            onClick={() => setShowEditModal(true)}
-            className="p-2 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
-            title="Bewerken"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          </button>
+          {isOwner && (
+            <>
+              <button
+                onClick={() => setShowCollaboratorModal(true)}
+                className="p-2 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                title="Samenwerkers"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="p-2 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                title="Bewerken"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+            </>
+          )}
           <ShareButton person={person} />
         </div>
 
@@ -390,40 +455,42 @@ export function Wishlist() {
             </div>
           )}
 
-          {/* Delete Person */}
-          <div className="pt-8 border-t border-gray-200">
-            {showDeleteConfirm ? (
-              <div className="text-center space-y-3">
-                <p className="text-red-600 font-medium">
-                  Weet je zeker dat je dit lijstje wilt verwijderen?
-                </p>
-                <p className="text-sm text-gray-500">
-                  Dit verwijdert ook alle {items.length} wensjes.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowDeleteConfirm(false)}
-                    className="flex-1 btn-secondary"
-                  >
-                    Annuleren
-                  </button>
-                  <button
-                    onClick={handleDeletePerson}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white font-medium px-6 py-3 rounded-full transition-colors"
-                  >
-                    Verwijderen
-                  </button>
+          {/* Delete Person - only for owner */}
+          {isOwner && (
+            <div className="pt-8 border-t border-gray-200">
+              {showDeleteConfirm ? (
+                <div className="text-center space-y-3">
+                  <p className="text-red-600 font-medium">
+                    Weet je zeker dat je dit lijstje wilt verwijderen?
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    Dit verwijdert ook alle {items.length} wensjes.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="flex-1 btn-secondary"
+                    >
+                      Annuleren
+                    </button>
+                    <button
+                      onClick={handleDeletePerson}
+                      className="flex-1 bg-red-500 hover:bg-red-600 text-white font-medium px-6 py-3 rounded-full transition-colors"
+                    >
+                      Verwijderen
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="w-full text-center text-red-500 hover:text-red-600 text-sm"
-              >
-                Lijstje van {person.name} verwijderen
-              </button>
-            )}
-          </div>
+              ) : (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full text-center text-red-500 hover:text-red-600 text-sm"
+                >
+                  Lijstje van {person.name} verwijderen
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -488,6 +555,86 @@ export function Wishlist() {
                 onSubmit={handleEditPerson}
                 submitLabel="Opslaan"
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collaborator Modal */}
+      {showCollaboratorModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-display font-semibold text-lg">
+                Samenwerkers beheren
+              </h3>
+              <button
+                onClick={() => setShowCollaboratorModal(false)}
+                className="p-1 rounded-full hover:bg-gray-100"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">
+                Voeg andere gebruikers toe om samen aan dit lijstje te werken.
+              </p>
+
+              {/* Add collaborator */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={collaboratorUsername}
+                  onChange={(e) => setCollaboratorUsername(e.target.value)}
+                  placeholder="Gebruikersnaam"
+                  className="input-field flex-1"
+                />
+                <button
+                  onClick={handleAddCollaborator}
+                  className="btn-primary px-4"
+                >
+                  Toevoegen
+                </button>
+              </div>
+              {collaboratorError && (
+                <p className="text-red-500 text-sm">{collaboratorError}</p>
+              )}
+
+              {/* Current collaborators */}
+              {person.collaborators && person.collaborators.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-medium text-gray-700">Huidige samenwerkers</h4>
+                  {person.collaborators.map((username) => (
+                    <div
+                      key={username}
+                      className="flex items-center justify-between bg-gray-50 rounded-xl p-3"
+                    >
+                      <div>
+                        <p className="font-medium text-gray-800">
+                          {collaboratorNames[username] || username}
+                        </p>
+                        <p className="text-sm text-gray-500">@{username}</p>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveCollaborator(username)}
+                        className="text-red-500 hover:text-red-600 p-1"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(!person.collaborators || person.collaborators.length === 0) && (
+                <p className="text-gray-500 text-sm text-center py-4">
+                  Nog geen samenwerkers toegevoegd
+                </p>
+              )}
             </div>
           </div>
         </div>

@@ -1,29 +1,54 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Twinkles } from '../components/Twinkles';
-import { getPersons } from '../lib/storage';
+import { getPersons } from '../lib/firebase';
+import { useAuth } from '../context/AuthContext';
 
 export function Welcome() {
-  const hasPersons = getPersons().length > 0;
+  const [hasPersons, setHasPersons] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const { user, logout } = useAuth();
+
+  useEffect(() => {
+    async function checkPersons() {
+      try {
+        const persons = await getPersons();
+        setHasPersons(persons.length > 0);
+      } catch (error) {
+        console.error('Error loading persons:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    checkPersons();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-cream to-cream-dark flex flex-col items-center justify-center p-6 relative overflow-hidden">
       <Twinkles count={30} />
 
+      {/* User menu */}
+      <div className="absolute top-4 right-4 z-20">
+        <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-sm">
+          <span className="text-sm text-gray-600">{user?.displayName || user?.username}</span>
+          <button
+            onClick={logout}
+            className="text-sm text-primary hover:text-primary-light font-medium"
+          >
+            Uitloggen
+          </button>
+        </div>
+      </div>
+
       {/* Logo/Visual */}
       <div className="relative mb-8 animate-float z-10">
         <div className="w-32 h-32 rounded-full magic-gradient flex items-center justify-center shadow-2xl">
           <svg
-            className="w-16 h-16 text-white"
-            fill="none"
+            className="w-16 h-16 text-gold"
             viewBox="0 0 24 24"
-            stroke="currentColor"
+            fill="currentColor"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
-            />
+            <path d="M12 2L14.09 8.26L20 9.27L15.55 13.97L16.91 20L12 16.9L7.09 20L8.45 13.97L4 9.27L9.91 8.26L12 2Z" />
           </svg>
         </div>
         {/* Decorative stars */}
@@ -60,10 +85,10 @@ export function Welcome() {
         <div className="text-center">
           <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center mx-auto mb-2">
             <svg className="w-6 h-6 text-gold-dark" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
           </div>
-          <span className="text-xs text-gray-600">Slimme tips</span>
+          <span className="text-xs text-gray-600">Samenwerken</span>
         </div>
         <div className="text-center">
           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
@@ -76,7 +101,9 @@ export function Welcome() {
       </div>
 
       {/* CTA Button - changes based on whether user has lists */}
-      {hasPersons ? (
+      {loading ? (
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent z-10" />
+      ) : hasPersons ? (
         <Link to="/persons" className="btn-primary text-lg px-8 relative z-10">
           Bekijk verlanglijstjes
         </Link>

@@ -3,6 +3,7 @@ import {
   getFirestore,
   collection,
   doc,
+  setDoc,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -13,30 +14,140 @@ import {
   orderBy,
   onSnapshot,
   Timestamp,
+  or,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import { Person, WishlistItem } from '../types';
 
-// Firebase configuration - replace with your own config
+// Firebase configuration
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'demo-api-key',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'demo.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-project',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'demo.appspot.com',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '123456789',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:123456789:web:abc123',
+  apiKey: "AIzaSyA6wVJ0wt3su3E0UyuYeyj15Qc-qxMgq-8",
+  authDomain: "dutchgiving-2fb9d.firebaseapp.com",
+  projectId: "dutchgiving-2fb9d",
+  storageBucket: "dutchgiving-2fb9d.firebasestorage.app",
+  messagingSenderId: "941613694287",
+  appId: "1:941613694287:web:427dd4d4825cc93dddd93a",
+  measurementId: "G-DK06RJ4FN1"
 };
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-// Get or create device ID for ownership
-export function getDeviceId(): string {
-  let deviceId = localStorage.getItem('wensjes_device_id');
-  if (!deviceId) {
-    deviceId = 'device_' + Math.random().toString(36).substring(2, 15);
-    localStorage.setItem('wensjes_device_id', deviceId);
+// Simple hash function for password (not cryptographically secure, but ok for this use case)
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + 'dutchgiving_salt_2024');
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// User types
+export interface User {
+  username: string;
+  passwordHash: string;
+  displayName: string;
+  createdAt: number;
+}
+
+// Session management
+const SESSION_KEY = 'dutchgiving_session';
+
+export function getCurrentUser(): { username: string; displayName: string } | null {
+  const session = localStorage.getItem(SESSION_KEY);
+  if (!session) return null;
+  try {
+    return JSON.parse(session);
+  } catch {
+    return null;
   }
-  return deviceId;
+}
+
+export function setCurrentUser(user: { username: string; displayName: string } | null): void {
+  if (user) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(SESSION_KEY);
+  }
+}
+
+// Authentication
+export async function registerUser(username: string, password: string, displayName: string): Promise<{ success: boolean; error?: string }> {
+  const normalizedUsername = username.toLowerCase().trim();
+
+  // Validate
+  if (normalizedUsername.length < 3) {
+    return { success: false, error: 'Gebruikersnaam moet minimaal 3 tekens zijn' };
+  }
+  if (password.length < 4) {
+    return { success: false, error: 'Wachtwoord moet minimaal 4 tekens zijn' };
+  }
+  if (!displayName.trim()) {
+    return { success: false, error: 'Weergavenaam is verplicht' };
+  }
+
+  // Check if username exists
+  const userRef = doc(db, 'users', normalizedUsername);
+  const userDoc = await getDoc(userRef);
+  if (userDoc.exists()) {
+    return { success: false, error: 'Deze gebruikersnaam is al in gebruik' };
+  }
+
+  // Create user
+  const passwordHash = await hashPassword(password);
+  await setDoc(userRef, {
+    username: normalizedUsername,
+    passwordHash,
+    displayName: displayName.trim(),
+    createdAt: Timestamp.now(),
+  });
+
+  // Auto login
+  setCurrentUser({ username: normalizedUsername, displayName: displayName.trim() });
+
+  return { success: true };
+}
+
+export async function loginUser(username: string, password: string): Promise<{ success: boolean; error?: string }> {
+  const normalizedUsername = username.toLowerCase().trim();
+
+  const userRef = doc(db, 'users', normalizedUsername);
+  const userDoc = await getDoc(userRef);
+
+  if (!userDoc.exists()) {
+    return { success: false, error: 'Gebruikersnaam of wachtwoord onjuist' };
+  }
+
+  const userData = userDoc.data() as User;
+  const passwordHash = await hashPassword(password);
+
+  if (userData.passwordHash !== passwordHash) {
+    return { success: false, error: 'Gebruikersnaam of wachtwoord onjuist' };
+  }
+
+  setCurrentUser({ username: normalizedUsername, displayName: userData.displayName });
+  return { success: true };
+}
+
+export function logoutUser(): void {
+  setCurrentUser(null);
+}
+
+// Check if username exists (for inviting collaborators)
+export async function checkUsernameExists(username: string): Promise<boolean> {
+  const normalizedUsername = username.toLowerCase().trim();
+  const userRef = doc(db, 'users', normalizedUsername);
+  const userDoc = await getDoc(userRef);
+  return userDoc.exists();
+}
+
+export async function getUserDisplayName(username: string): Promise<string | null> {
+  const normalizedUsername = username.toLowerCase().trim();
+  const userRef = doc(db, 'users', normalizedUsername);
+  const userDoc = await getDoc(userRef);
+  if (!userDoc.exists()) return null;
+  return (userDoc.data() as User).displayName;
 }
 
 // Generate share code
@@ -44,32 +155,48 @@ export function generateShareCode(): string {
   return Math.random().toString(36).substring(2, 10).toUpperCase();
 }
 
+// Extended Person type with collaborators
+export interface PersonWithCollaborators extends Person {
+  collaborators?: string[]; // array of usernames
+}
+
 // Persons CRUD
 export async function createPerson(person: Omit<Person, 'id' | 'shareCode' | 'createdAt' | 'ownerId'>): Promise<string> {
+  const currentUser = getCurrentUser();
+  if (!currentUser) throw new Error('Niet ingelogd');
+
   const docRef = await addDoc(collection(db, 'persons'), {
     ...person,
     shareCode: generateShareCode(),
     createdAt: Timestamp.now(),
-    ownerId: getDeviceId(),
+    ownerId: currentUser.username,
+    collaborators: [],
   });
   return docRef.id;
 }
 
-export async function getPersons(): Promise<Person[]> {
+export async function getPersons(): Promise<PersonWithCollaborators[]> {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return [];
+
+  // Get persons where user is owner OR collaborator
   const q = query(
     collection(db, 'persons'),
-    where('ownerId', '==', getDeviceId()),
-    orderBy('createdAt', 'desc')
+    or(
+      where('ownerId', '==', currentUser.username),
+      where('collaborators', 'array-contains', currentUser.username)
+    )
   );
+
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
     createdAt: doc.data().createdAt?.toMillis?.() || Date.now(),
-  })) as Person[];
+  })) as PersonWithCollaborators[];
 }
 
-export async function getPersonById(id: string): Promise<Person | null> {
+export async function getPersonById(id: string): Promise<PersonWithCollaborators | null> {
   const docRef = doc(db, 'persons', id);
   const snapshot = await getDoc(docRef);
   if (!snapshot.exists()) return null;
@@ -77,22 +204,22 @@ export async function getPersonById(id: string): Promise<Person | null> {
     id: snapshot.id,
     ...snapshot.data(),
     createdAt: snapshot.data().createdAt?.toMillis?.() || Date.now(),
-  } as Person;
+  } as PersonWithCollaborators;
 }
 
-export async function getPersonByShareCode(shareCode: string): Promise<Person | null> {
+export async function getPersonByShareCode(shareCode: string): Promise<PersonWithCollaborators | null> {
   const q = query(
     collection(db, 'persons'),
     where('shareCode', '==', shareCode)
   );
   const snapshot = await getDocs(q);
   if (snapshot.empty) return null;
-  const doc = snapshot.docs[0];
+  const docSnap = snapshot.docs[0];
   return {
-    id: doc.id,
-    ...doc.data(),
-    createdAt: doc.data().createdAt?.toMillis?.() || Date.now(),
-  } as Person;
+    id: docSnap.id,
+    ...docSnap.data(),
+    createdAt: docSnap.data().createdAt?.toMillis?.() || Date.now(),
+  } as PersonWithCollaborators;
 }
 
 export async function updatePerson(id: string, data: Partial<Person>): Promise<void> {
@@ -109,6 +236,31 @@ export async function deletePerson(id: string): Promise<void> {
   // Then delete the person
   const docRef = doc(db, 'persons', id);
   await deleteDoc(docRef);
+}
+
+// Collaborator management
+export async function addCollaborator(personId: string, username: string): Promise<{ success: boolean; error?: string }> {
+  const normalizedUsername = username.toLowerCase().trim();
+
+  // Check if user exists
+  const exists = await checkUsernameExists(normalizedUsername);
+  if (!exists) {
+    return { success: false, error: 'Gebruiker niet gevonden' };
+  }
+
+  const docRef = doc(db, 'persons', personId);
+  await updateDoc(docRef, {
+    collaborators: arrayUnion(normalizedUsername)
+  });
+
+  return { success: true };
+}
+
+export async function removeCollaborator(personId: string, username: string): Promise<void> {
+  const docRef = doc(db, 'persons', personId);
+  await updateDoc(docRef, {
+    collaborators: arrayRemove(username.toLowerCase().trim())
+  });
 }
 
 // Wishlist Items CRUD
@@ -145,18 +297,27 @@ export async function deleteWishlistItem(id: string): Promise<void> {
 }
 
 // Real-time listeners
-export function subscribeToPersons(callback: (persons: Person[]) => void): () => void {
+export function subscribeToPersons(callback: (persons: PersonWithCollaborators[]) => void): () => void {
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    callback([]);
+    return () => {};
+  }
+
   const q = query(
     collection(db, 'persons'),
-    where('ownerId', '==', getDeviceId()),
-    orderBy('createdAt', 'desc')
+    or(
+      where('ownerId', '==', currentUser.username),
+      where('collaborators', 'array-contains', currentUser.username)
+    )
   );
+
   return onSnapshot(q, (snapshot) => {
     const persons = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       createdAt: doc.data().createdAt?.toMillis?.() || Date.now(),
-    })) as Person[];
+    })) as PersonWithCollaborators[];
     callback(persons);
   });
 }
@@ -174,5 +335,21 @@ export function subscribeToWishlistItems(personId: string, callback: (items: Wis
       createdAt: doc.data().createdAt?.toMillis?.() || Date.now(),
     })) as WishlistItem[];
     callback(items);
+  });
+}
+
+// Subscribe to a single person (for real-time updates)
+export function subscribeToPerson(personId: string, callback: (person: PersonWithCollaborators | null) => void): () => void {
+  const docRef = doc(db, 'persons', personId);
+  return onSnapshot(docRef, (snapshot) => {
+    if (!snapshot.exists()) {
+      callback(null);
+      return;
+    }
+    callback({
+      id: snapshot.id,
+      ...snapshot.data(),
+      createdAt: snapshot.data().createdAt?.toMillis?.() || Date.now(),
+    } as PersonWithCollaborators);
   });
 }
