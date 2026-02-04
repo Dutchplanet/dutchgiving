@@ -1,0 +1,25 @@
+{
+  "name": "DutchGiving - Magische Verlanglijstjes",
+  "short_name": "DutchGiving",
+  "description": "Maak en deel magische verlanglijstjes voor jezelf en anderen",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDF8F3",
+  "theme_color": "#8B2635",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["lifestyle", "shopping"],
+  "lang": "nl-NL"
+}
